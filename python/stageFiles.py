@@ -577,6 +577,29 @@ xrdcp    = xrootdLocation+"/xrdcp "
 xrdstat  = xrootdLocation+"/xrd.pl -w stat "
 xrdrm    = xrootdLocation+"/xrd.pl rm "
 
+
+def checkFile(fileName):
+    log.info("Verifying existence of " + fileName)
+    if fileName.startswith(xrootStart):
+        rc = _xrootCheckFile(fileName)
+    else:
+        rc = _fsCheckFile(fileName)
+        pass
+    if not rc: log.error("Could not access requested file: " + fileName)
+    return rc
+
+def _xrootCheckFile(fileName):
+    xrdcmd = xrdstat + fileName
+    xrdrc = os.system(xrdcmd)
+    log.debug("xrdstat return code = " + str(xrdrc))
+    rc = not xrdrc
+    return rc
+
+def _fsCheckFile(fileName):
+    rc = os.access(fileName, os.R_OK)
+    return rc
+
+
 def copy(fromFile, toFile):
     rc = 0
 
@@ -584,16 +607,23 @@ def copy(fromFile, toFile):
         log.info("Not copying %s to itself." % fromFile)
         return rc
 
+    # Verify source file is accessible
+    if not checkFile(fromFile): return 1
+
     if fromFile.startswith(xrootStart) or toFile.startswith(xrootStart):
-        rc = xrootdCopy(fromFile, toFile)
+        rc = _xrootdCopy(fromFile, toFile)
     else:
-        rc = fileCopy(fromFile, toFile)
+        rc = _fsCopy(fromFile, toFile)
         pass
     
+    # Verify destination file has been copied
+    #   (this is a trivial existence check - more could be done here...)
+    if not checkFile(toFile): return 1
+        
     return rc
 
 
-def xrootdCopy(fromFile, toFile):
+def _xrootdCopy(fromFile, toFile):
     """
     @brief copy a staged file to final xrootd repository.
     @param fromFile = name of staged file, toFile = name of final file
@@ -604,23 +634,6 @@ def xrootdCopy(fromFile, toFile):
     rc = 0
 
     
-# Verify source file is accessible
-    if fromFile.startswith(xrootStart):
-        xrdcmd=xrdstat+fromFile
-        log.info("Verifying existence of "+fromFile)
-        rc = os.system(xrdcmd)
-        log.debug("xrdstat return code = "+str(rc))
-        if int(rc) != 0:
-            log.error("Could not access requested file: "+str(fromFile))
-            return 1
-        pass
-    else:
-        if not os.access(fromFile,os.R_OK):
-            log.error("Could not access requested file: "+str(fromFile))
-            return 1
-        pass
-
-
     ## The following kludge is necessary (11/4/2008) due to bug in xrdcp
     ##  wherein overwriting an existing file on a "full" server will fail
     ##  The fix is to first delete the file.  
@@ -658,33 +671,11 @@ def xrootdCopy(fromFile, toFile):
         return rc
         pass
     
-## Verify destination file has been copied
-##   (this is a trivial existence check - more could be done here...)
-    if toFile.startswith(xrootStart):
-        xrdcmd=xrdstat+toFile
-        log.info("Verifying existence of "+toFile)
-        rc = os.system(xrdcmd)
-        log.debug("xrdstat return code = "+str(rc))
-        if int(rc) != 0:
-            log.error("Could not access requested file: "+str(toFile))
-            return 1
-        pass
-    else:
-        if not os.access(toFile,os.R_OK):
-            log.error("Could not access requested file: "+str(toFile))
-            return 1
-        pass
-        
 
     return rc
 
 
-
-
-
-
-
-def fileCopy(fromFile, toFile):
+def _fsCopy(fromFile, toFile):
     """
     @brief copy a file
     @param fromFile = name of ssource file
@@ -700,57 +691,52 @@ def fileCopy(fromFile, toFile):
 ## automount), several attempts are made to copy the input file to
 ## local scratch space.  If that fails, then staging is effectively
 ## disabled for that file.
-    log.debug("Looking for " + str(fromFile))
-    if not os.access(fromFile, os.R_OK):
-        log.error("Unable to access "+str(fromFile))
-        return 1
-    else:
-        for mytry in range(1, maxtry+1):
-            if mytry > 1: waitABit()
-            rc = 0
-            start = time.time()
-            try:
-                log.info('Starting try %d.' % mytry)
-                rc |= mkdirFor(tempName)
-                log.info("Copying %s to %s " % (fromFile, tempName))
-                # shutil.copy(fromFile, tempName)
-                checksum = cpck.copyAndSum(fromFile, tempName)
-                log.info('Checksum = %s' % checksum)
-                log.info("Renaming %s to %s" % (tempName, toFile))
-                os.rename(tempName, toFile)
-                break
-            except:
-                ex, exInfo, traceBack = sys.exc_info()
-                rc = 1
-                log.error("Error copying file to %s (try %d): %s" %
-                          (toFile, mytry, exInfo))
-                continue
-            continue
-        if rc:
-            log.info('Failed after %d tries' % mytry)
-            return rc
 
-        deltaT = time.time() - start
-        
-        log.info('Succeeded after %d tries' % mytry)
-
+    for mytry in range(1, maxtry+1):
+        if mytry > 1: waitABit()
+        rc = 0
+        start = time.time()
         try:
-            size = os.stat(toFile).st_size
+            log.info('Starting try %d.' % mytry)
+            rc |= mkdirFor(tempName)
+            log.info("Copying %s to %s " % (fromFile, tempName))
+            # shutil.copy(fromFile, tempName)
+            checksum = cpck.copyAndSum(fromFile, tempName)
+            log.info('Checksum = %s' % checksum)
+            log.info("Renaming %s to %s" % (tempName, toFile))
+            os.rename(tempName, toFile)
+            break
         except:
             ex, exInfo, traceBack = sys.exc_info()
-            log.error("Can't stat file %s: %s" % (toFile, exInfo))
-            return 1
-
-        if deltaT:
-            rate = '%g' % (float(size) / deltaT)
-        else:
-            rate = 'many'
-            pass
-        log.info('Transferred %g bytes in %g seconds, avg. rate = %s B/s' %
-                 (size, deltaT, rate))
-
-        pass
+            rc = 1
+            log.error("Error copying file to %s (try %d): %s" %
+                      (toFile, mytry, exInfo))
+            continue
+        continue
     
+    if rc:
+        log.info('Failed after %d tries' % mytry)
+        return rc
+
+    deltaT = time.time() - start
+        
+    log.info('Succeeded after %d tries' % mytry)
+
+    try:
+        size = os.stat(toFile).st_size
+    except:
+        ex, exInfo, traceBack = sys.exc_info()
+        log.error("Can't stat file %s: %s" % (toFile, exInfo))
+        return 1
+
+    if deltaT:
+        rate = '%g' % (float(size) / deltaT)
+    else:
+        rate = 'many'
+        pass
+    log.info('Transferred %g bytes in %g seconds, avg. rate = %s B/s' %
+             (size, deltaT, rate))
+
     return rc
 
 
