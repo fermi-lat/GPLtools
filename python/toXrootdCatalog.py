@@ -1,4 +1,4 @@
-#! /afs/slac/g/glast/isoc/flightOps/rhel3_gcc32/ISOC_PROD/bin/shisoc python2.5
+#!/sdf/data/fermi/a/isoc/flightOps/rhel6_gcc44/ISOC_PROD/bin/shisoc python2.6
 ## toXrootdCatalog.py - copy specified file to xrootd location and register in
 ##                      the data catalogue
 ##
@@ -32,11 +32,6 @@
 ## xrootd client tools: https://confluence.slac.stanford.edu/display/ds/Using+Xrootd+client+tools
 ## datacat tools: https://confluence.slac.stanford.edu/display/ds/Data+Catalog+Users+Guide
 ##
-## Some alternate installations of python for !shbang usage below...
-##!/afs/slac/g/glast/isoc/flightOps/ISOC_PROD/bin/shisoc python2.5
-##!/usr/local/bin/python
-
-
 ##
 ## Preliminaries
 ##
@@ -85,7 +80,8 @@ group = options.group
 executeThis = options.execute
 
 xrootRedirector = 'root://glast-rdr.slac.stanford.edu//glast/'
-xrdcpLoc = '/afs/slac/g/glast/applications/xrootd/PROD/bin/xrdcp '
+xrdcpLoc = '/sdf/data/fermi/a/applications/xrootd/dist/v3.1.1/i386_rhel60/bin/xrdcp'
+
 
 ##
 ## Check existence of the input file
@@ -114,7 +110,7 @@ else:
 
 ## register the file in the catalogue
 
-datacatLoc = '/afs/slac.stanford.edu/g/glast/ground/bin/datacat '
+datacatLoc = '/sdf/data/fermi/a/ground/bin/datacat'
 useMeta = ''
 if metaData != 'null': 
     useMeta = '-D s"' + metaData + '"'
